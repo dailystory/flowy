@@ -1,17 +1,17 @@
-var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spacing_y) {
+var flowy = function (canvas, grab, release, snapping, rearrange, spacing_x, spacing_y) {
     if (!grab) {
-        grab = function() {};
+        grab = function () { };
     }
     if (!release) {
-        release = function() {};
+        release = function () { };
     }
     if (!snapping) {
-        snapping = function() {
+        snapping = function () {
             return true;
         }
     }
     if (!rearrange) {
-        rearrange = function() {
+        rearrange = function () {
             return false;
         }
     }
@@ -21,11 +21,27 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
     if (!spacing_y) {
         spacing_y = 80;
     }
+
+    if (!Element.prototype.matches) {
+        Element.prototype.matches = Element.prototype.msMatchesSelector ||
+            Element.prototype.webkitMatchesSelector;
+    }
+    if (!Element.prototype.closest) {
+        Element.prototype.closest = function (s) {
+            var el = this;
+            do {
+                if (Element.prototype.matches.call(el, s)) return el;
+                el = el.parentElement || el.parentNode;
+            } while (el !== null && el.nodeType === 1);
+            return null;
+        };
+    }
+
     var loaded = false;
-    flowy.load = function() {
+    flowy.load = function () {
         if (!loaded)
             loaded = true;
-        else 
+        else
             return;
         var blocks = [];
         var blockstemp = [];
@@ -39,22 +55,23 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
         var lastevent = false;
         var drag, dragx, dragy, original;
         var mouse_x, mouse_y;
+        var begin_mouse_x, begin_mouse_y;
         var dragblock = false;
         var prevblock = 0;
         var el = document.createElement("DIV");
         el.classList.add('indicator');
         el.classList.add('invisible');
         canvas_div.appendChild(el);
-        flowy.import = function(output) {
+        flowy.import = function (output) {
             canvas_div.innerHTML = JSON.parse(output.html);
             blocks = output.blockarr;
             if (blocks.length > 1) {
                 rearrangeMe();
             }
         }
-        flowy.output = function() {
+        flowy.output = function () {
             var html_ser = JSON.stringify(canvas_div.innerHTML);
-            var json_data = {html:html_ser, blockarr:blocks, blocks:[]};
+            var json_data = { html: html_ser, blockarr: blocks, blocks: [] };
             if (blocks.length > 0) {
                 for (var i = 0; i < blocks.length; i++) {
                     json_data.blocks.push({
@@ -64,7 +81,7 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                         attr: []
                     });
                     var blockParent = document.querySelector(".blockid[value='" + blocks[i].id + "']").parentNode;
-                    blockParent.querySelectorAll("input").forEach(function(block) {
+                    blockParent.querySelectorAll("input").forEach(function (block) {
                         var json_name = block.getAttribute("name");
                         var json_value = block.value;
                         json_data.blocks[i].data.push({
@@ -72,7 +89,7 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                             value: json_value
                         });
                     });
-                    Array.prototype.slice.call(blockParent.attributes).forEach(function(attribute) {
+                    Array.prototype.slice.call(blockParent.attributes).forEach(function (attribute) {
                         var jsonobj = {};
                         jsonobj[attribute.name] = attribute.value;
                         json_data.blocks[i].attr.push(jsonobj);
@@ -81,12 +98,17 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 return json_data;
             }
         }
-        flowy.deleteBlocks = function() {
+        flowy.deleteBlocks = function () {
             blocks = [];
             canvas_div.innerHTML = "<div class='indicator invisible'></div>";
         }
-        
-        flowy.beginDrag = function(event) {
+
+        // ┌────────────────────────────────────────────────────────────────────
+        // │ Handles when a block is dragged
+        // └────────────────────────────────────────────────────────────────────
+        flowy.beginDrag = function (event) {
+
+            // touch drag
             if (event.targetTouches) {
                 mouse_x = event.changedTouches[0].clientX;
                 mouse_y = event.changedTouches[0].clientY;
@@ -94,6 +116,11 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 mouse_x = event.clientX;
                 mouse_y = event.clientY;
             }
+
+            // track where the mouse begins
+            begin_mouse_x = mouse_x;
+            begin_mouse_y = mouse_y;
+
             if (event.which != 3 && event.target.closest(".create-flowy")) {
                 original = event.target.closest(".create-flowy");
                 var newNode = event.target.closest(".create-flowy").cloneNode(true);
@@ -114,26 +141,112 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 active = true;
                 dragx = mouse_x - (event.target.closest(".create-flowy").offsetLeft);
                 dragy = mouse_y - (event.target.closest(".create-flowy").offsetTop);
+
+
+                // get the offset when the canvas is scrolled horizontally
+                if (window.pageXOffset > 0) {
+                    mouse_x += window.pageXOffset;
+                }
+
                 drag.style.left = (mouse_x - dragx) + "px";
 
-                // get the offset when the block list is scrolled
+                // get the offset when the block list is scrolled vertically
                 var scroll_offset = document.getElementById('blocklist').scrollTop;
+
+                // get the offset when the canvas is scrolled
+                if (window.pageYOffset > 0) {
+                    mouse_y += window.pageYOffset;
+                }
+
                 var y = mouse_y - (scroll_offset + dragy);
 
                 drag.style.top = `${y}px`;
             }
         }
-        document.addEventListener("mousedown",touchblock, false);
-        document.addEventListener("touchstart",touchblock, false);
+        document.addEventListener("mousedown", touchblock, false);
+        document.addEventListener("touchstart", touchblock, false);
         document.addEventListener("mouseup", touchblock, false);
 
-        flowy.touchDone = function() {
+        flowy.touchDone = function () {
             dragblock = false;
         }
-        document.addEventListener('mousedown',flowy.beginDrag);
-        document.addEventListener('touchstart',flowy.beginDrag);
-        
-        flowy.endDrag = function(event) {
+        document.addEventListener('mousedown', flowy.beginDrag);
+        document.addEventListener('touchstart', flowy.beginDrag);
+
+        // ┌────────────────────────────────────────────────────────────────────
+        // │ Delete a block by id
+        // └────────────────────────────────────────────────────────────────────
+        flowy.deleteBlock = function (id) {
+            let newParentId;
+
+            if (!Number.isInteger(id)) {
+                id = parseInt(id);
+            }
+
+            for (var i = 0; i < blocks.length; i++) {
+                if (blocks[i].id === id) {
+                    newParentId = blocks[i].parent;
+                    canvas_div.appendChild(document.querySelector(".indicator"));
+                    removeBlockEls(blocks[i].id);
+                    blocks.splice(i, 1);
+                    modifyChildBlocks(id);
+                    break;
+                }
+            }
+
+            if (blocks.length > 1) {
+                rearrangeMe();
+            }
+
+            function modifyChildBlocks(parentId) {
+                let children = [];
+                let blocko = blocks.map((a) => a.id);
+                for (var i = blocko.length - 1; i >= 0; i--) {
+                    let currentBlock = blocks.filter((a) => a.id == blocko[i])[0];
+                    if (currentBlock.parent === parentId) {
+                        children.push(currentBlock.id);
+                        removeBlockEls(currentBlock.id);
+                        blocks.splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < children.length; i++) {
+                    modifyChildBlocks(children[i]);
+                }
+            }
+            function removeBlockEls(id) {
+                document
+                    .querySelector(".blockid[value='" + id + "']")
+                    .parentNode.remove();
+                document
+                    .querySelector(".arrowid[value='" + id + "']")
+                    .parentNode.remove();
+            }
+        };
+
+        // ┌────────────────────────────────────────────────────────────────────
+        // │ Dragging of a block has ended
+        // └────────────────────────────────────────────────────────────────────
+        flowy.endDrag = function (event) {
+
+            // Disable snapping on minor move of a block
+            let diffx = mouse_x - begin_mouse_x;
+            let diffy = mouse_y - begin_mouse_y;
+
+            if (
+                Math.abs(diffx) < 50 &&
+                Math.abs(diffy) < 50 &&
+                rearrange &&
+                parseInt(drag.querySelector(".blockid").value) !== 0
+            ) {
+                var blocko = blocks.map((a) => a.id);
+                active = false;
+                drag.classList.remove("dragging");
+                snap(drag, blocko.indexOf(prevblock), blocko);
+                document.querySelector(".indicator").classList.add("invisible");
+                return;
+            }
+
             if (event.which != 3 && (active || rearrange)) {
                 dragblock = false;
                 blockReleased();
@@ -189,9 +302,9 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                     var blocko = blocks.map(a => a.id);
                     for (var i = 0; i < blocks.length; i++) {
                         if (xpos >= blocks.filter(a => a.id == blocko[i])[0].x - (blocks.filter(a => a.id == blocko[i])[0].width / 2) - paddingx && xpos <= blocks.filter(a => a.id == blocko[i])[0].x + (blocks.filter(a => a.id == blocko[i])[0].width / 2) + paddingx && ypos >= blocks.filter(a => a.id == blocko[i])[0].y - (blocks.filter(a => a.id == blocko[i])[0].height / 2) && ypos <= blocks.filter(a => a.id == blocko[i])[0].y + blocks.filter(a => a.id == blocko[i])[0].height) {
-                                            active = false;
+                            active = false;
                             if (blockSnap(drag, false, blocks.filter(id => id.id == blocko[i])[0])) {
-                                snap(drag,i, blocko);
+                                snap(drag, i, blocko);
                             } else {
                                 active = false;
                                 canvas_div.appendChild(document.querySelector(".indicator"));
@@ -205,15 +318,15 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                         }
                     }
                 } else if (rearrange) {
-                        var xpos = (drag.getBoundingClientRect().left + window.scrollX) + (parseInt(window.getComputedStyle(drag).width) / 2) + canvas_div.scrollLeft;
-                        var ypos = (drag.getBoundingClientRect().top + window.scrollY) + canvas_div.scrollTop
-                        var blocko = blocks.map(a => a.id);
-                        for (var i = 0; i < blocks.length; i++) {
-                            if (xpos >= blocks.filter(a => a.id == blocko[i])[0].x - (blocks.filter(a => a.id == blocko[i])[0].width / 2) - paddingx && xpos <= blocks.filter(a => a.id == blocko[i])[0].x + (blocks.filter(a => a.id == blocko[i])[0].width / 2) + paddingx && ypos >= blocks.filter(a => a.id == blocko[i])[0].y - (blocks.filter(a => a.id == blocko[i])[0].height / 2) && ypos <= blocks.filter(a => a.id == blocko[i])[0].y + blocks.filter(a => a.id == blocko[i])[0].height) {
-                                active = false;
-                                drag.classList.remove("dragging");
-                                snap(drag,i,blocko);
-                                break;
+                    var xpos = (drag.getBoundingClientRect().left + window.scrollX) + (parseInt(window.getComputedStyle(drag).width) / 2) + canvas_div.scrollLeft;
+                    var ypos = (drag.getBoundingClientRect().top + window.scrollY) + canvas_div.scrollTop
+                    var blocko = blocks.map(a => a.id);
+                    for (var i = 0; i < blocks.length; i++) {
+                        if (xpos >= blocks.filter(a => a.id == blocko[i])[0].x - (blocks.filter(a => a.id == blocko[i])[0].width / 2) - paddingx && xpos <= blocks.filter(a => a.id == blocko[i])[0].x + (blocks.filter(a => a.id == blocko[i])[0].width / 2) + paddingx && ypos >= blocks.filter(a => a.id == blocko[i])[0].y - (blocks.filter(a => a.id == blocko[i])[0].height / 2) && ypos <= blocks.filter(a => a.id == blocko[i])[0].y + blocks.filter(a => a.id == blocko[i])[0].height) {
+                            active = false;
+                            drag.classList.remove("dragging");
+                            snap(drag, i, blocko);
+                            break;
                         } else if (i == blocks.length - 1) {
                             if (beforeDelete(drag, blocks.filter(id => id.id == blocko[i])[0])) {
                                 active = false;
@@ -233,10 +346,10 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 }
             }
         }
-        
+
         document.addEventListener("mouseup", flowy.endDrag, false);
         document.addEventListener("touchend", flowy.endDrag, false);
-        
+
         function snap(drag, i, blocko) {
             if (!rearrange) {
                 canvas_div.appendChild(drag);
@@ -348,7 +461,7 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
             rearrangeMe();
             checkOffset();
         }
-        
+
         function touchblock(event) {
             dragblock = false;
             if (hasParentClass(event.target, "block")) {
@@ -375,12 +488,12 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
 
         function hasParentClass(element, classname) {
             if (element.className) {
-                if (element.className.split(' ').indexOf(classname)>=0) return true;
+                if (element.className.split(' ').indexOf(classname) >= 0) return true;
             }
             return element.parentNode && hasParentClass(element.parentNode, classname);
         }
-        
-        flowy.moveBlock = function(event) {
+
+        flowy.moveBlock = function (event) {
             if (event.targetTouches) {
                 mouse_x = event.targetTouches[0].clientX;
                 mouse_y = event.targetTouches[0].clientY;
@@ -399,7 +512,7 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 var blockid = parseInt(drag.querySelector(".blockid").value);
                 prevblock = blocks.filter(a => a.id == blockid)[0].parent;
                 blockstemp.push(blocks.filter(a => a.id == blockid)[0]);
-                blocks = blocks.filter(function(e) {
+                blocks = blocks.filter(function (e) {
                     return e.id != blockid
                 });
                 if (blockid != 0) {
@@ -434,13 +547,13 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 }
                 for (var i = 0; i < blocks.filter(a => a.parent == blockid).length; i++) {
                     var blocknumber = blocks.filter(a => a.parent == blockid)[i];
-                    blocks = blocks.filter(function(e) {
+                    blocks = blocks.filter(function (e) {
                         return e.id != blocknumber
                     });
                 }
                 for (var i = 0; i < allids.length; i++) {
                     var blocknumber = allids[i];
-                    blocks = blocks.filter(function(e) {
+                    blocks = blocks.filter(function (e) {
                         return e.id != blocknumber
                     });
                 }
@@ -453,10 +566,21 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
                 dragblock = false;
             }
             if (active) {
+                // get the offset when the canvas is scrolled horizontally
+                if (window.pageXOffset > 0) {
+                    mouse_x += window.pageXOffset;
+                }
+
                 drag.style.left = mouse_x - dragx + "px";
 
                 // get the offset when the block list is scrolled
                 var scroll_offset = document.getElementById('blocklist').scrollTop;
+
+                // get the offset when the canvas is scrolled
+                if (window.pageYOffset > 0) {
+                    mouse_y += window.pageYOffset;
+                }
+
                 var y = mouse_y - (scroll_offset + dragy);
 
                 drag.style.top = `${y}px`;
@@ -520,7 +644,7 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
         function checkOffset() {
             offsetleft = blocks.map(a => a.x);
             var widths = blocks.map(a => a.width);
-            var mathmin = offsetleft.map(function(item, index) {
+            var mathmin = offsetleft.map(function (item, index) {
                 return item - (widths[index] / 2);
             })
             offsetleft = Math.min.apply(Math, mathmin);
@@ -642,18 +766,18 @@ var flowy = function(canvas, grab, release, snapping, rearrange, spacing_x, spac
     function blockSnap(drag, first, parent) {
         return snapping(drag, first, parent);
     }
-    
+
     function beforeDelete(drag, parent) {
         return rearrange(drag, parent);
     }
-    
+
     function addEventListenerMulti(type, listener, capture, selector) {
         var nodes = document.querySelectorAll(selector);
-        for (var i=0; i < nodes.length; i++) {
+        for (var i = 0; i < nodes.length; i++) {
             nodes[i].addEventListener(type, listener, capture);
         }
     }
-    
+
     function removeEventListenerMulti(type, listener, capture, selector) {
         var nodes = document.querySelectorAll(selector);
         for (var i = 0; i < nodes.length; i++) {
